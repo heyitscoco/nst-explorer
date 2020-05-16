@@ -38,12 +38,10 @@ def load_image(path):
 	scale = max_dim / lng
 	img = img.resize((round(img.size[0]*scale), round(img.size[1]*scale)), Image.ANTIALIAS)
 	img = kp_image.img_to_array(img)
-
 	# We need to broadcast the image array such that it has a batch dimension 
 	img = np.expand_dims(img, axis=0)
 	return img
 
-@st.cache
 def get_model(style_layers=ALL_STYLE_LAYERES):
 	""" Creates our model with access to intermediate layers. 
 
@@ -64,6 +62,10 @@ def get_model(style_layers=ALL_STYLE_LAYERES):
 	model_outputs = style_outputs + content_outputs
 	# Build model 
 	return models.Model(vgg.input, model_outputs)
+
+
+def process_img(img):
+    return tf.keras.applications.vgg19.preprocess_input(img)
 
 
 def get_content_loss(base_content, target):
@@ -88,7 +90,7 @@ def get_style_loss(base_style, gram_target):
 
 	return tf.reduce_mean(tf.square(gram_style - gram_target))# / (4. * (channels ** 2) * (width * height) ** 2)
 
-def get_feature_representations(model, content_path, style_path):
+def get_feature_representations(model, content_img, style_img, num_style_layers):
 	"""Helper function to compute our content and style feature representations.
 
 	This function will simply load and preprocess both the content and style 
@@ -97,15 +99,17 @@ def get_feature_representations(model, content_path, style_path):
 
 	Arguments:
 		model: The model that we are using.
-		content_path: The path to the content image.
-		style_path: The path to the style image
+		content_img: The image data.
+		style_img: The path to the style image
 
 	Returns:
 		returns the style features and the content features. 
 	"""
 	# Load our images in 
-	content_image = load_and_process_img(content_path)
-	style_image = load_and_process_img(style_path)
+	content_image = process_img(content_img)
+	style_image = process_img(style_img)
+	# content_image = content_img
+	# style_image = style_img
 
 	# batch compute content and style features
 	style_outputs = model(style_image)
@@ -175,8 +179,8 @@ def compute_grads(cfg):
 	return tape.gradient(total_loss, cfg['init_image']), all_loss
 
 @st.cache
-def run_style_transfer(content_path, 
-                       style_path,
+def run_style_transfer(content_img, 
+                       style_img,
                        num_iterations=1000,
                        content_weight=1000, 
                        style_weight=.01,
@@ -184,16 +188,17 @@ def run_style_transfer(content_path,
 ):
     # We don't need to (or want to) train any layers of our model, so we set their
     # trainable to false. 
-    model = get_model(style_layers) 
+    model = get_model(style_layers)
     for layer in model.layers:
         layer.trainable = False
-  
+
+    num_style_layers = len(style_layers)
     # Get the style and content feature representations (from our specified intermediate layers) 
-    style_features, content_features = get_feature_representations(model, content_path, style_path)
+    style_features, content_features = get_feature_representations(model, content_img, style_img, num_style_layers)
     gram_style_features = [gram_matrix(style_feature) for style_feature in style_features]
     
     # Set initial image
-    init_image = load_and_process_img(content_path)
+    init_image = process_img(content_img)
     init_image = tf.Variable(init_image, dtype=tf.float32)
     # Create our optimizer
     opt = tf.optimizers.Adam(learning_rate=5, beta1=0.99, epsilon=1e-1)
@@ -265,37 +270,41 @@ def run_style_transfer(content_path,
     return best_img, best_loss
 
 
-# Page header
-st.title('Neural Style Transfer Explorer')
-st.subheader('By Carolyn Conway')
+if __name__ == "__main__":
+    # Page header
+    st.title('Neural Style Transfer Explorer')
+    st.subheader('By Carolyn Conway')
 
-# Image uploaders
-content_img = st.file_uploader('Content Image')
-if content_img:
-	st.image(content_img, width=cfg.image_width)
-	content_img = load_image(content_img)
+    # Image uploaders
+    content_img = st.file_uploader('Content Image')
+    if content_img:
+        st.image(content_img, width=cfg.image_width)
+        content_img = load_image(content_img)
 
-style_img = st.file_uploader('Style Image')
-if style_img:
-	st.image(style_img, width=cfg.image_width)
-	style_img = load_image(style_img)
+    style_img = st.file_uploader('Style Image')
+    if style_img:
+        st.image(style_img, width=cfg.image_width)
+        style_img = load_image(style_img)
 
-# ML Config
-st.subheader('Style Layers')
-style_selections = [st.checkbox(f'Layer {i + 1}') for i in range(len(ALL_STYLE_LAYERES))]
-style_layers = [layer for layer, selected in zip(ALL_STYLE_LAYERES, style_selections) if selected]
+    # ML Config
+    st.subheader('Style Layers')
+    style_selections = [
+        st.checkbox(f'Layer {i + 1}', value=True)
+        for i in range(len(ALL_STYLE_LAYERES))
+    ]
+    style_layers = [layer for layer, selected in zip(ALL_STYLE_LAYERES, style_selections) if selected]
 
-if st.button('Generate Image'):
-	if content_img is not None and style_img is not None:
-		run_style_transfer(
-			content_img,
-			style_img,
-			num_iterations=1000,
-			content_weight=1000, 
-			style_weight=.01,
-			style_layers=style_layers,
-		)
+    if st.button('Generate Image'):
+        if content_img is not None and style_img is not None:
+            run_style_transfer(
+                content_img,
+                style_img,
+                num_iterations=1000,
+                content_weight=1000, 
+                style_weight=.01,
+                style_layers=style_layers,
+            )
 
-# Balloons
-if st.button('Balloons Please!'):
-	st.balloons()
+    # Balloons
+    if st.button('Balloons Please!'):
+        st.balloons()
