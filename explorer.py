@@ -279,18 +279,9 @@ def run_style_transfer(content_img,
             # Update best loss and best image from total loss.
             best_loss = loss
             best_img = deprocess_img(init_image.numpy())
+        print('.', end='')
 
-        if i % display_interval == 0:
-            start_time = time.time()
-            print('Iteration: {}'.format(i))
-            print(
-                'Total loss: {:.4e}, '
-                'style loss: {:.4e}, '
-                'content loss: {:.4e}, '
-                'time: {:.4f}s'.format(
-                    loss, style_score, content_score, time.time() - start_time)
-            )
-        print('Total time: {:.4f}s'.format(time.time() - global_start))
+    st.text(f'Completed image generation in {time.time() - global_start}s')
     return best_img, best_loss
 
 
@@ -321,14 +312,16 @@ if __name__ == "__main__":
 
     if st.button('Generate Image'):
         if content_img is not None and style_img is not None:
-            run_style_transfer(
+            best_img, best_loss = run_style_transfer(
                 content_img,
                 style_img,
-                num_iterations=1000,
+                num_iterations=500,
                 content_weight=1000,
-                style_weight=.01,
+                style_weight=.001,
                 style_layers=style_layers,
             )
+            st.subheader('Result')
+            st.image(best_img)
 
     # Balloons
     if st.button('Balloons Please!'):
